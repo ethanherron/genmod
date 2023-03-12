@@ -1,0 +1,4 @@
+name: genmod
+channels:
+  - defaults
+prefix: /home/exouser/.conda/envs/genmod
