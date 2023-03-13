@@ -6,7 +6,7 @@ from einops import rearrange
 from torchvision.utils import save_image, make_grid
 
 from modules.networks.UnetViT import UViT
-from modules.networks.Unet import ContextUnet_2lvls
+from modules.networks.Unet import ContextUnet
 from modules.utils.schedulers import linear_beta_schedule
 
 
@@ -17,7 +17,7 @@ class DDPM(pl.LightningModule):
                 ):
         super(DDPM, self).__init__()
         # self.nn_model = UViT()
-        self.nn_model = ContextUnet_2lvls(in_channels=1, out_channels=1)
+        self.nn_model = ContextUnet(in_channels=1)
 
         self.betas = linear_beta_schedule(n_T)
 

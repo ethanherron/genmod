@@ -1,10 +1,7 @@
-
-
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, reduce
-
 
 
 class ResidualConvBlock(nn.Module):
@@ -44,7 +41,6 @@ class ResidualConvBlock(nn.Module):
             return x2
 
 
-
 class UnetDown(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(UnetDown, self).__init__()
@@ -56,7 +52,6 @@ class UnetDown(nn.Module):
 
     def forward(self, x):
         return self.model(x)
-
 
 
 class UnetUp(nn.Module):
@@ -78,7 +73,6 @@ class UnetUp(nn.Module):
         return x
 
 
-
 class EmbedFC(nn.Module):
     def __init__(self, input_dim, emb_dim):
         super(EmbedFC, self).__init__()
@@ -98,13 +92,11 @@ class EmbedFC(nn.Module):
         return self.model(x)
 
 
-
-class ContextUnet_2lvls(nn.Module):
-    def __init__(self, in_channels, out_channels, n_feat = 256):
-        super(ContextUnet_2lvls, self).__init__()
+class ContextUnet(nn.Module):
+    def __init__(self, in_channels, n_feat = 64):
+        super(ContextUnet, self).__init__()
 
         self.in_channels = in_channels
-        self.out_channels = out_channels
         self.n_feat = n_feat
 
         self.init_conv = ResidualConvBlock(in_channels, n_feat, is_res=True)
@@ -119,7 +111,7 @@ class ContextUnet_2lvls(nn.Module):
 
         self.up0 = nn.Sequential(
             # nn.ConvTranspose2d(6 * n_feat, 2 * n_feat, 7, 7), # when concat temb and cemb end up w 6*n_feat
-            nn.ConvTranspose2d(2 * n_feat, 2 * n_feat, 8, 8), # otherwise just have 2*n_feat
+            nn.ConvTranspose2d(2 * n_feat, 2 * n_feat, 7, 7), # otherwise just have 2*n_feat
             nn.GroupNorm(8, 2 * n_feat),
             nn.ReLU(),
         )
@@ -130,23 +122,25 @@ class ContextUnet_2lvls(nn.Module):
             nn.Conv2d(2 * n_feat, n_feat, 3, 1, 1),
             nn.GroupNorm(8, n_feat),
             nn.ReLU(),
-            nn.Conv2d(n_feat, self.out_channels, 3, 1, 1),
+            nn.Conv2d(n_feat, self.in_channels, 3, 1, 1),
         )
 
     def forward(self, x, t):
         # x is (noisy) image, c is context label, t is timestep, 
+        # context_mask says which samples to block the context on
 
         x = self.init_conv(x)
         down1 = self.down1(x)
         down2 = self.down2(down1)
-        hiddenvec = self.to_vec(down2) #converts channels to vector with average pooling
+        hiddenvec = self.to_vec(down2)
         
         # embed context, time step
         temb1 = self.timeembed1(t).view(-1, self.n_feat * 2, 1, 1)
         temb2 = self.timeembed2(t).view(-1, self.n_feat, 1, 1)
 
         up1 = self.up0(hiddenvec)
-        up2 = self.up1(up1+ temb1, down2)  # add and multiply embeddings
-        up3 = self.up2(up2+ temb2, down1)
+        # up2 = self.up1(up1, down2) # if want to avoid add and multiply embeddings
+        up2 = self.up1(up1 + temb1, down2)  # add and multiply embeddings
+        up3 = self.up2(up2 + temb2, down1)
         out = self.out(torch.cat((up3, x), 1))
         return out

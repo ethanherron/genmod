@@ -36,17 +36,17 @@ def main(args):
     # ------------------------
     # 2 INIT TRAINER
     # ------------------------
-#     wandb_logger = WandbLogger(project='genmod', 
-#                                log_model='all')
+    wandb_logger = WandbLogger(project='genmod', 
+                               log_model='all')
 
-#     checkpoint = ModelCheckpoint(monitor='train_loss',
-#                                  mode='min', 
-#                                  save_last=True)
+    checkpoint = ModelCheckpoint(monitor='train_loss',
+                                 mode='min', 
+                                 save_last=True)
 
     trainer = pl.Trainer(devices=args.gpu, 
                          accelerator='gpu',
-                         # callbacks=[checkpoint],
-                         # logger=wandb_logger, 
+                         callbacks=[checkpoint],
+                         logger=wandb_logger, 
                          max_epochs=args.n_epochs, 
                          default_root_dir=save_dir, 
                          fast_dev_run=args.debug)
@@ -61,11 +61,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trajectory Prediction')
-    parser.add_argument('--save_dir', default='.results/training/debug',#DDPM',
+    parser.add_argument('--save_dir', default='.results/training/DDPM',
                         type=str,help='path to directory for storing the checkpoints etc.')
     parser.add_argument('-b','--batch_size', default=256, type=int,
                         help='Batch size')
-    parser.add_argument('-ep','--n_epochs', default=25, type=int,
+    parser.add_argument('-ep','--n_epochs', default=10, type=int,
                         help='Number of epochs')
     parser.add_argument('-g','--gpu', default=1, type=int,
                         help='num gpus')
