@@ -1,11 +1,12 @@
 import torch, os
 import torch.nn.functional as F
-import pytorch_lightning as pl
+import lightning as pl
 from einops import rearrange
 
 from torchvision.utils import save_image, make_grid
 
 from modules.networks.UnetViT import UViT
+from modules.networks.Unet import ContextUnet_2lvls
 from modules.utils.schedulers import linear_beta_schedule
 
 
@@ -15,7 +16,8 @@ class DDPM(pl.LightningModule):
                 n_T=1000,
                 ):
         super(DDPM, self).__init__()
-        self.nn_model = UViT()
+        # self.nn_model = UViT()
+        self.nn_model = ContextUnet_2lvls(in_channels=1, out_channels=1)
 
         self.betas = linear_beta_schedule(n_T)
 
