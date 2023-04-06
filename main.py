@@ -7,6 +7,7 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 
 from modules.trainers.DDPM import DDPM
+from modules.trainers.genmod import genmod
 
 
 
@@ -31,7 +32,8 @@ def main(args):
     # ------------------------
     # 1 INIT MODEL
     # ------------------------
-    model = DDPM()
+    # model = DDPM()
+    model = genmod()
 
     # ------------------------
     # 2 INIT TRAINER
@@ -45,6 +47,7 @@ def main(args):
 
     trainer = pl.Trainer(devices=args.gpu, 
                          accelerator='gpu',
+                         precision=16,
                          callbacks=[checkpoint],
                          logger=wandb_logger, 
                          max_epochs=args.n_epochs, 
@@ -65,7 +68,7 @@ if __name__ == '__main__':
                         type=str,help='path to directory for storing the checkpoints etc.')
     parser.add_argument('-b','--batch_size', default=256, type=int,
                         help='Batch size')
-    parser.add_argument('-ep','--n_epochs', default=10, type=int,
+    parser.add_argument('-ep','--n_epochs', default=20, type=int,
                         help='Number of epochs')
     parser.add_argument('-g','--gpu', default=1, type=int,
                         help='num gpus')

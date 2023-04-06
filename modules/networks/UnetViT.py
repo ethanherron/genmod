@@ -158,13 +158,14 @@ class Transformer(nn.Module):
 
 
 class UViT(nn.Module):
-    def __init__(self, *, n_feat = 64, patch_size = 14, dim = 64, depth = 2, heads = 7, dim_head = 16, dropout = 0., emb_dropout = 0.):
+    def __init__(self, *, n_feat = 128, patch_size = 7, dim = 128, depth = 4, heads = 8, dim_head = 64, dropout = 0.1, emb_dropout = 0.):
         super().__init__()
 
         self.in_channels = 1
         self.n_feat = n_feat
 
         self.down1 = UnetDown(self.in_channels, n_feat)
+        self.down2 = UnetDown(n_feat, 2*n_feat)
 
         num_patches = 4 * n_feat
         patch_dim = patch_size**2
@@ -176,7 +177,7 @@ class UViT(nn.Module):
 
         self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         self.time_embedding = nn.Sequential(
-                                            EmbedFC(1, n_feat),
+                                            EmbedFC(1, n_feat*2),
                                             Rearrange('b d -> b d ()')
                                         )
         self.dropout = nn.Dropout(emb_dropout)
@@ -188,10 +189,14 @@ class UViT(nn.Module):
             nn.Linear(dim, patch_dim),
             Rearrange('b c (h w) -> b c h w', h = patch_size, w = patch_size)
         )
+        
+        self.timeembed1 = EmbedFC(1, 2*n_feat)
+        self.timeembed2 = EmbedFC(1, 1*n_feat)
 
-        self.up1 = UnetUp(2 * n_feat, n_feat//2)
+        self.up1 = UnetUp(4 * n_feat, n_feat)
+        self.up2 = UnetUp(2 * n_feat, n_feat)
 
-        self.final_block = nn.Sequential(nn.Conv2d((n_feat//2)+1, n_feat//4, 3, 1, 1), 
+        self.final_block = nn.Sequential(nn.Conv2d((n_feat)+1, n_feat//4, 3, 1, 1), 
                                         nn.LeakyReLU(0.2, inplace=True),
                                         nn.Conv2d(n_feat//4, 1, 3, 1, 1)
                                         )
@@ -200,9 +205,10 @@ class UViT(nn.Module):
     def forward(self, x, t):
         # downsample unet
         down1 = self.down1(x)
+        down2 = self.down2(down1)
         
         # begin ViT backbone
-        latent = self.patch_to_embedding(down1)
+        latent = self.patch_to_embedding(down2)
         b, n, _ = latent.shape
 
         time_embedding = self.time_embedding(t)
@@ -214,7 +220,12 @@ class UViT(nn.Module):
         latent = self.embedding_to_patch(latent)
         # end ViT backbone
         
+        # compute other time embeddings
+        temb1 = self.timeembed1(t).view(-1, self.n_feat * 2, 1, 1)
+        temb2 = self.timeembed2(t).view(-1, self.n_feat, 1, 1)
+        
         # upsample unet
-        up1 = self.up1(latent, down1)
-        out = self.final_block(torch.cat((up1, x), 1))
+        up1 = self.up1(latent + temb1, down2)
+        up2 = self.up2(up1 + temb2, down1)
+        out = self.final_block(torch.cat((up2, x), 1))
         return out

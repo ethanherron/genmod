@@ -13,11 +13,12 @@ from modules.utils.schedulers import linear_beta_schedule
 
 class DDPM(pl.LightningModule):
     def __init__(self,
-                n_T=1000,
+                n_T=500,
+                n_feat=128
                 ):
         super(DDPM, self).__init__()
         # self.nn_model = UViT()
-        self.nn_model = ContextUnet(in_channels=1)
+        self.nn_model = ContextUnet(in_channels=1, n_feat=n_feat)
 
         self.betas = linear_beta_schedule(n_T)
 
@@ -94,6 +95,6 @@ class DDPM(pl.LightningModule):
         self.log('val_loss', loss)
 
     def configure_optimizers(self):
-        lr = 5e-5
+        lr = 1e-4
         opt = torch.optim.Adam(self.nn_model.parameters(), lr=lr)
         return opt
