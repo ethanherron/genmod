@@ -55,11 +55,8 @@ class DDPM(pl.LightningModule):
             "mab_over_sqrtmab": mab_over_sqrtmab_inv,  # (1-\alpha_t)/\sqrt{1-\bar{\alpha_t}}
         }
 
-    def forward(self, x):
-        noise = torch.randn_like(x)  # eps ~ N(0, 1)
-        _ts = torch.randint(1, self.n_T, (x.shape[0],)).to(x).long()  # t ~ Uniform(0, n_T)
-        x_t = self.sample_forward_diffusion(x, _ts, noise)
-        return F.mse_loss(noise, self.nn_model(x_t, _ts / self.n_T))
+    def forward(self, x, t):
+        return self.nn_model(x_t, t / self.n_T)
 
     def sample_forward_diffusion(self, x, _ts, noise):
         x_t = (
@@ -82,16 +79,22 @@ class DDPM(pl.LightningModule):
                 + self.sqrt_beta_t[i] * z
             )
         return x_i
+    
+    def loss(self, x):
+        noise = torch.randn_like(x)  # eps ~ N(0, 1)
+        _ts = torch.randint(1, self.n_T, (x.shape[0],)).to(x).long()  # t ~ Uniform(0, n_T)
+        x_t = self.sample_forward_diffusion(x, _ts, noise)
+        return F.mse_loss(noise, self.nn_model(x_t, _ts / self.n_T))
 
     def training_step(self, batch, batch_idx):
         images, _ = batch
-        loss = self.forward(images)
+        loss = self.loss(images)
         self.log('train_loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
         images, _ = batch
-        loss = self.forward(images)
+        loss = self.loss(images)
         self.log('val_loss', loss)
 
     def configure_optimizers(self):

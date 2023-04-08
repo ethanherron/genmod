@@ -7,6 +7,7 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 
 from modules.trainers.DDPM import DDPM
+from modules.trainers.VariationalDM import VDM
 from modules.trainers.genmod import genmod
 
 
@@ -23,8 +24,8 @@ def main(args):
     # 0 INIT DATAMODULE
     # ------------------------
     tf = transforms.Compose([transforms.ToTensor()]) # mnist is already normalised 0 to 1
-    train_dataset = MNIST("./data", train=True, download=False, transform=tf)
-    val_dataset = MNIST("./data", train=False, download=False, transform=tf)
+    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=True, transform=tf)
+    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=True, transform=tf)
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, pin_memory=True)
     val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
 
@@ -33,7 +34,8 @@ def main(args):
     # 1 INIT MODEL
     # ------------------------
     # model = DDPM()
-    model = genmod()
+    model = VDM()
+    # model = genmod()
 
     # ------------------------
     # 2 INIT TRAINER
