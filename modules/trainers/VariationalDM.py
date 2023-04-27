@@ -75,8 +75,7 @@ class VDM(pl.LightningModule):
             else:
                 x_t = self.reverse_diffusion_step(x_t, steps[i], steps[i+1])
         
-        x_0.clamp_(-1., 1.)
-        return unnormalize_to_zero_to_one(x_0)
+        return unnormalize_to_zero_to_one(x_0.clamp_(-1., 1.))
     
     
     def reverse_diffusion_step(self, x_t, t, tm1):
@@ -87,6 +86,7 @@ class VDM(pl.LightningModule):
         squared_sigma_t, squared_sigma_tm1 = torch.sigmoid(-log_snr_t), torch.sigmoid(-log_snr_tm1)
 
         alpha, sigma, alpha_tm1 = map(sqrt, (squared_alpha_t, squared_sigma_t, squared_alpha_tm1))
+        c = - torch.expm1(log_snr_t - log_snr_tm1)
         
         v_hat = self.network(x_t, log_snr_t)
         x_delta = alpha * x_t - sigma * v_hat
