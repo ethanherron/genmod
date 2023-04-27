@@ -13,7 +13,7 @@ from modules.utils.schedulers import linear_beta_schedule
 
 class DDPM(pl.LightningModule):
     def __init__(self,
-                n_T=500,
+                n_T=1000,
                 n_feat=128
                 ):
         super(DDPM, self).__init__()

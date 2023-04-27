@@ -21,24 +21,38 @@ def main(args):
         os.makedirs(save_dir)
 
     # ------------------------
-    # 0 INIT DATAMODULE
+    #  INIT DATAMODULE
     # ------------------------
     tf = transforms.Compose([transforms.ToTensor()]) # mnist is already normalised 0 to 1
-    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=True, transform=tf)
-    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=True, transform=tf)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, num_workers=args.num_workers, pin_memory=True)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=True)
+    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=False, transform=tf)
+    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=False, transform=tf)
+    
+    train_loader = torch.utils.data.DataLoader(train_dataset, 
+                                               batch_size=args.batch_size, 
+                                               shuffle=True, drop_last=True, 
+                                               num_workers=args.num_workers, 
+                                               pin_memory=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, 
+                                             batch_size=args.batch_size, 
+                                             shuffle=False, 
+                                             num_workers=args.num_workers, 
+                                             pin_memory=True)
+    
+    # Set float32 matrix multiplication precision to medium
+    torch.set_float32_matmul_precision('medium')
 
 
     # ------------------------
-    # 1 INIT MODEL
+    #  INIT MODEL
     # ------------------------
     # model = DDPM()
     model = VDM()
+    # model = PFGM()
     # model = genmod()
+    
 
     # ------------------------
-    # 2 INIT TRAINER
+    #  INIT TRAINER
     # ------------------------
     wandb_logger = WandbLogger(project='genmod', 
                                log_model='all')
@@ -57,7 +71,7 @@ def main(args):
                          fast_dev_run=args.debug)
 
     # ------------------------
-    # 4 Training
+    #  Training
     # ------------------------
 
     trainer.fit(model, train_loader, val_loader)
@@ -66,11 +80,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trajectory Prediction')
-    parser.add_argument('--save_dir', default='.results/training/DDPM',
+    parser.add_argument('--save_dir', default='.results/training/VDM',
                         type=str,help='path to directory for storing the checkpoints etc.')
     parser.add_argument('-b','--batch_size', default=256, type=int,
                         help='Batch size')
-    parser.add_argument('-ep','--n_epochs', default=20, type=int,
+    parser.add_argument('-ep','--n_epochs', default=10, type=int,
                         help='Number of epochs')
     parser.add_argument('-g','--gpu', default=1, type=int,
                         help='num gpus')
