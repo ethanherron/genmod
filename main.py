@@ -7,7 +7,8 @@ from torchvision import transforms
 from torchvision.datasets import MNIST
 
 from modules.trainers.DDPM import DDPM
-from modules.trainers.VariationalDM import VDM
+from modules.trainers.VDM import VDM
+from modules.trainers.EDM import EDM
 from modules.trainers.genmod import genmod
 
 
@@ -46,7 +47,8 @@ def main(args):
     #  INIT MODEL
     # ------------------------
     # model = DDPM()
-    model = VDM()
+    # model = VDM()
+    model = EDM()
     # model = PFGM()
     # model = genmod()
     
