@@ -82,11 +82,11 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trajectory Prediction')
-    parser.add_argument('--save_dir', default='.results/training/VDM',
+    parser.add_argument('--save_dir', default='.results/training/EDM',
                         type=str,help='path to directory for storing the checkpoints etc.')
     parser.add_argument('-b','--batch_size', default=256, type=int,
                         help='Batch size')
-    parser.add_argument('-ep','--n_epochs', default=10, type=int,
+    parser.add_argument('-ep','--n_epochs', default=20, type=int,
                         help='Number of epochs')
     parser.add_argument('-g','--gpu', default=1, type=int,
                         help='num gpus')
