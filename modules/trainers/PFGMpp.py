@@ -56,7 +56,7 @@ class PFGMpp(pl.LightningModule):
                 S_tmax = 50.,
                 S_noise = 1.003,
                 D = 128,
-                N = 28*28                # this is dimension of data i.e., MNIST is 28x28 so N = 784
+                N = 1*28*28                # this is dimension of data i.e., MNIST is 1x28x28 so N = 784
                 ):
         super(PFGMpp, self).__init__()
         self.network = ContextUnet(in_channels=1, n_feat=n_feat)
@@ -120,14 +120,10 @@ class PFGMpp(pl.LightningModule):
         gaussian = torch.randn(x_0.shape[0], self.N).to(x_0)
         unit_gaussian = gaussian / torch.norm(gaussian, p=2, dim=1, keepdim=True)
         
-        print('unit_gaussian - ', unit_gaussian.shape)
-        print('samples_norm - ', samples_norm.shape)
-        
         # construct perturbation for x
         perturbation_x = (unit_gaussian * samples_norm)
-        n = rearrange(perturbation_x, 'b (c h w) -> b c h w', c=1, h=28, w=28)
-        x_t = x_0 + n
-        return x_t
+        eps = rearrange(perturbation_x, 'b (c h w) -> b c h w', c=1, h=28, w=28)
+        return eps
     
     def loss_weight(self, sigmas):
         return (sigmas ** 2 + self.sigma_data ** 2) * (sigmas * self.sigma_data) ** -2
@@ -135,7 +131,8 @@ class PFGMpp(pl.LightningModule):
     def loss(self, x_0): 
         sigmas = pad(self.noise_distribution(x_0))
         
-        x_t = self.forward_diffusion(x_0, sigmas)
+        eps = self.forward_diffusion(x_0, sigmas)
+        x_t = x_0 + eps
                 
         x_0_hat = self.forward(x_t, sigmas)
         
@@ -164,7 +161,7 @@ class PFGMpp(pl.LightningModule):
         sigmas_gammas = list(zip(sigmas[:-1], sigmas[1:], gammas[:-1]))
         
         sigma_T = sigmas[0]
-        x_t = sigma_T * torch.randn_like(x_T).to(x_T)
+        x_t = self.forward_diffusion(x_T, sigma_T)
         
         for sigma_t, sigma_tm1, gamma in tqdm(sigmas_gammas, desc = 'sampling time step'):
             x_t = self.reverse_diffusion_step(x_t, sigma_t, sigma_tm1, gamma)
