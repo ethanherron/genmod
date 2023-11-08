@@ -17,7 +17,6 @@ class DDPM(pl.LightningModule):
                 n_feat=128
                 ):
         super(DDPM, self).__init__()
-        # self.nn_model = UViT()
         self.nn_model = ContextUnet(in_channels=1, n_feat=n_feat)
 
         self.betas = linear_beta_schedule(n_T)

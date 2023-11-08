@@ -26,8 +26,8 @@ def main(args):
     #  INIT DATAMODULE
     # ------------------------
     tf = transforms.Compose([transforms.ToTensor()]) # mnist is already normalised 0 to 1
-    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=False, transform=tf)
-    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=False, transform=tf)
+    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=True, transform=tf)
+    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=True, transform=tf)
     
     train_loader = torch.utils.data.DataLoader(train_dataset, 
                                                batch_size=args.batch_size, 
@@ -47,18 +47,18 @@ def main(args):
     # ------------------------
     #  INIT MODEL
     # ------------------------
-    # model = DDPM()
+    model = DDPM()
     # model = VDM()
     # model = EDM()
-    model = PFGMpp()
+    # model = PFGMpp()
     # model = genmod()
     
 
     # ------------------------
     #  INIT TRAINER
     # ------------------------
-    # wandb_logger = WandbLogger(project='genmod', 
-    #                            log_model='all')
+    wandb_logger = WandbLogger(project='genmod', 
+                               log_model='all')
 
     checkpoint = ModelCheckpoint(monitor='train_loss',
                                  mode='min', 
@@ -68,7 +68,7 @@ def main(args):
                          accelerator='gpu',
                          precision=16,
                          callbacks=[checkpoint],
-                         # logger=wandb_logger, 
+                         logger=wandb_logger, 
                          max_epochs=args.n_epochs, 
                          default_root_dir=save_dir, 
                          fast_dev_run=args.debug)
@@ -83,7 +83,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trajectory Prediction')
-    parser.add_argument('--save_dir', default='.results/training/PFGMpp',
+    parser.add_argument('--save_dir', default='./results/training/DDPM',
                         type=str,help='path to directory for storing the checkpoints etc.')
     parser.add_argument('-b','--batch_size', default=256, type=int,
                         help='Batch size')

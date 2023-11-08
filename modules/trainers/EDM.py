@@ -82,7 +82,6 @@ class EDM(pl.LightningModule):
         x_tm1 = self.c_skip(sigmas) * x_t + self.c_out(sigmas) * network_output
         return x_tm1.clamp(-1., 1.)
     
-    
     def noise_distribution(self, x_0):
         return (self.P_mean + self.P_std * torch.randn((x_0.shape[0],)).to(x_0)).exp()
     
