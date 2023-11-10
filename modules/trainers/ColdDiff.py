@@ -10,21 +10,18 @@ from modules.networks.UnetViT import UViT
 from modules.networks.Unet import ContextUnet
 from modules.utils.schedulers import linear_beta_schedule
 
+from modules.trainers.base import BaseDiffusionModule
 
 
-class ColdDiff(pl.LightningModule):
+
+
+class ColdDiff(BaseDiffusionModule):
     def __init__(self,
-                n_T=1000,
-                n_feat=128
+                number_of_timesteps=1000
                 ):
-        super(ColdDiff, self).__init__()
-        self.nn_model = ContextUnet(in_channels=1, n_feat=n_feat)
-
+        super().__init__(number_of_timesteps)
         self.betas = linear_beta_schedule(n_T)
-        
         self.gaussian_kernels = nn.ModuleList(self.get_kernels())
-
-        self.n_T = n_T
 
     def forward(self, x, t):
         return self.nn_model(x_t, t / self.n_T)
@@ -47,16 +44,20 @@ class ColdDiff(pl.LightningModule):
         return conv
 
     def get_kernels(self):
+        '''
+        There are multiple different options in ColdDiff, but we will use the 
+        'Incremental' version for this implementation.
+        '''
         kernels = []
         for i in range(self.n_T):
             kernels.append(self.get_conv((self.kernel_size, self.kernel_size), (self.kernel_std*(i+1), self.kernel_std*(i+1)) ) )
 
         return kernels
 
-    def sample_forward_diffusion(self, x_0, _ts, noise):
+    def forward_diffusion_process(self, x_0, _ts):
         '''
         In cold diffusion the "forward diffusion process" is an abritrary image transformation. 
-        For this example we use a basic image blurring operation, i.e., convolutions. 
+        For this example we use a basic image blurring operation by applying convolutions. 
         '''
         all_blurs = []
         x = x_0
@@ -78,7 +79,7 @@ class ColdDiff(pl.LightningModule):
         return torch.stack(choose_blur)
     
     @torch.no_grad()
-    def sample_loop(self, batch):
+    def reverse_diffusion_process(self, batch):
         '''
         Cold Diffusion Sampling - Algorithm 2 in paper: https://arxiv.org/abs/2208.09392
         x_t = x_T
@@ -92,99 +93,19 @@ class ColdDiff(pl.LightningModule):
         '''
         self.nn_model.eval()
         x_t = torch.randn_like(batch)    # generate initial random noise samples i.e. x_T
+        for i in range(self.n_T):
+            with torch.no_grad():
+                x_t = self.gaussian_kernels[i](img)
         for i in range(self.n_T, 1):
             x_0_hat = self.nn_model(x_T, (i / self.n_T).long())
             x_tm1 = x_t - self.gaussian_kernels[i](x_0_hat) + self.gaussian_kernels[i-1](x_0_hat)
             x_t = x_tm1
         
         return x_t
-        
     
-#     def gen_sample_2(self, batch_size=16, img=None, t=None, noise_level=0):
-
-#         self.denoise_fn.eval()
-
-#         if t == None:
-#             t = self.num_timesteps
-
-#         if self.blur_routine == 'Individual_Incremental':
-#             img = self.gaussian_kernels[t - 1](img)
-
-#         else:
-#             for i in range(t):
-#                 with torch.no_grad():
-#                     img = self.gaussian_kernels[i](img)
-
-#         orig_mean = torch.mean(img, [2, 3], keepdim=True)
-#         print(orig_mean.squeeze()[0])
-
-#         temp = img
-#         if self.discrete:
-#             img = torch.mean(img, [2, 3], keepdim=True)
-#             img = img.expand(temp.shape[0], temp.shape[1], temp.shape[2], temp.shape[3])
-
-#         noise = torch.randn_like(img) * noise_level
-#         img = img + noise
-
-#         # 3(2), 2(1), 1(0)
-#         xt = img
-#         direct_recons = None
-#         while (t):
-#             step = torch.full((batch_size,), t - 1, dtype=torch.long).cuda()
-#             x = self.denoise_fn(img, step)
-
-#             if self.train_routine == 'Final':
-#                 if direct_recons == None:
-#                     direct_recons = x
-
-#                 if self.sampling_routine == 'default':
-#                     if self.blur_routine == 'Individual_Incremental':
-#                         x = self.gaussian_kernels[t - 2](x)
-#                     else:
-#                         for i in range(t - 1):
-#                             with torch.no_grad():
-#                                 x = self.gaussian_kernels[i](x)
-
-#                 elif self.sampling_routine == 'x0_step_down':
-#                     x_times = x
-#                     for i in range(t):
-#                         with torch.no_grad():
-#                             x_times = self.gaussian_kernels[i](x_times)
-#                             if self.discrete:
-#                                 if i == (self.num_timesteps - 1):
-#                                     x_times = torch.mean(x_times, [2, 3], keepdim=True)
-#                                     x_times = x_times.expand(temp.shape[0], temp.shape[1], temp.shape[2], temp.shape[3])
-
-#                     x_times_sub_1 = x
-#                     for i in range(t - 1):
-#                         with torch.no_grad():
-#                             x_times_sub_1 = self.gaussian_kernels[i](x_times_sub_1)
-
-#                     x = img - x_times + x_times_sub_1
-#             img = x
-#             t = t - 1
-
-#         # img = img - noise
-
-#         return xt, direct_recons, img
+    def reverse_diffusion_step(self)
     
     def loss(self, x_0):
         _ts = torch.randint(1, self.n_T, (x.shape[0],)).to(x).long()  # t ~ Uniform(0, n_T)
         x_t = self.sample_forward_diffusion(x, _ts)
         return F.mse_loss(x_0, self.nn_model(x_t, _ts / self.n_T))
-
-    def training_step(self, batch, batch_idx):
-        images, _ = batch
-        loss = self.loss(images)
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        images, _ = batch
-        loss = self.loss(images)
-        self.log('val_loss', loss)
-
-    def configure_optimizers(self):
-        lr = 1e-4
-        opt = torch.optim.Adam(self.nn_model.parameters(), lr=lr)
-        return opt

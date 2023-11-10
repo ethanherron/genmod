@@ -7,34 +7,23 @@ from einops import rearrange
 from tqdm import tqdm
 
 from torchvision.utils import save_image, make_grid
-
-from modules.networks.Unet import ContextUnet
+from modules.trainers.base import BaseDiffusionModule
 
 
 # helper functions
 
-# pad alpha, sigma terms from [b] -> [b 1 1 1]
 def pad(var):
     if var.shape == ():
         return rearrange(var, ' -> 1 1 1 1')
     else:
         return rearrange(var, 'b -> b 1 1 1')
 
-def normalize_to_neg_one_to_one(img):
-    return img * 2 - 1
 
-def unnormalize_to_zero_to_one(t):
-    return (t + 1) * 0.5
-
-
-class VDM(pl.LightningModule):
-    def __init__(self,
-                n_T=1000,
-                n_feat=128
-                ):
-        super(VDM, self).__init__()
-        self.network = ContextUnet(in_channels=1, n_feat=n_feat)
-        self.n_T = n_T
+class VDM(BaseDiffusionModule):
+    def __init__(self, 
+                 number_of_timesteps=1000
+                 ):
+        super().__init__(number_of_timesteps)
 
     def forward(self, x_t):
         return self.nn_model(x_t)
@@ -45,7 +34,7 @@ class VDM(pl.LightningModule):
         t_max = math.atan(math.exp(-0.5 * logsnr_min))
         return -2 * torch.log(torch.tan(t_min + t * (t_max - t_min)))
     
-    def forward_diffusion(self, x_0, alpha, sigma):
+    def forward_diffusion_process(self, x_0, alpha, sigma):
         eps = torch.randn_like(x_0).to(x_0)
         x_t = x_0 * alpha + eps * sigma
         return x_t, eps
@@ -58,10 +47,10 @@ class VDM(pl.LightningModule):
         log_snr = self.logsnr(t)
         alpha = pad(torch.sqrt(torch.sigmoid(log_snr)))
         sigma = pad(torch.sqrt(torch.sigmoid(-log_snr)))
-        x_t, eps = self.forward_diffusion(x_0, alpha, sigma)
+        x_t, eps = self.forward_diffusion_process(x_0, alpha, sigma)
         
         # optimize network for v-prediction formulation
-        v_hat = self.network(x_t, log_snr)
+        v_hat = self.nn_model(x_t, log_snr)
         v = alpha * eps - sigma * x_0
         return F.mse_loss(v_hat, v)
     
@@ -75,7 +64,7 @@ class VDM(pl.LightningModule):
             else:
                 x_t = self.reverse_diffusion_step(x_t, steps[i], steps[i+1])
         
-        return unnormalize_to_zero_to_one(x_0.clamp_(-1., 1.))
+        return x_0#unnormalize_to_zero_to_one(x_0.clamp_(-1., 1.))
     
     
     def reverse_diffusion_step(self, x_t, t, tm1):
@@ -88,7 +77,7 @@ class VDM(pl.LightningModule):
         alpha, sigma, alpha_tm1 = map(sqrt, (squared_alpha_t, squared_sigma_t, squared_alpha_tm1))
         c = - torch.expm1(log_snr_t - log_snr_tm1)
         
-        v_hat = self.network(x_t, log_snr_t)
+        v_hat = self.nn_model(x_t, log_snr_t)
         x_delta = alpha * x_t - sigma * v_hat
         
         mu = alpha_tm1 * (x_t * (1 - c) / alpha + c * x_delta)
@@ -101,24 +90,6 @@ class VDM(pl.LightningModule):
             return mu
         else:
             return x_t
-    
-    def training_step(self, batch, batch_idx):
-        images, _ = batch
-        images = normalize_to_neg_one_to_one(images)
-        loss = self.loss(images)
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        images, _ = batch
-        images = normalize_to_neg_one_to_one(images)
-        loss = self.loss(images)
-        self.log('val_loss', loss)
-
-    def configure_optimizers(self):
-        lr = 1e-4
-        opt = torch.optim.Adam(self.network.parameters(), lr=lr)
-        return opt
     
     
     

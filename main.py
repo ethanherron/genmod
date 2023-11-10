@@ -26,8 +26,8 @@ def main(args):
     #  INIT DATAMODULE
     # ------------------------
     tf = transforms.Compose([transforms.ToTensor()]) # mnist is already normalised 0 to 1
-    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=True, transform=tf)
-    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=True, transform=tf)
+    train_dataset = MNIST("/media/volume/sdb/data", train=True, download=False, transform=tf)
+    val_dataset = MNIST("/media/volume/sdb/data", train=False, download=False, transform=tf)
     
     train_loader = torch.utils.data.DataLoader(train_dataset, 
                                                batch_size=args.batch_size, 
@@ -47,10 +47,10 @@ def main(args):
     # ------------------------
     #  INIT MODEL
     # ------------------------
-    model = DDPM()
+    # model = DDPM()
     # model = VDM()
     # model = EDM()
-    # model = PFGMpp()
+    model = PFGMpp()
     # model = genmod()
     
 
@@ -83,7 +83,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trajectory Prediction')
-    parser.add_argument('--save_dir', default='./results/training/DDPM',
+    parser.add_argument('--save_dir', default='./results/training/VDM',
                         type=str,help='path to directory for storing the checkpoints etc.')
     parser.add_argument('-b','--batch_size', default=256, type=int,
                         help='Batch size')
@@ -91,7 +91,7 @@ if __name__ == '__main__':
                         help='Number of epochs')
     parser.add_argument('-g','--gpu', default=1, type=int,
                         help='num gpus')
-    parser.add_argument('--num_workers', default=4, type=int,
+    parser.add_argument('--num_workers', default=1, type=int,
                         help='num workers for data module.')
     parser.add_argument('--debug', default=False, type=bool,
                         help='fast_dev_run argument')

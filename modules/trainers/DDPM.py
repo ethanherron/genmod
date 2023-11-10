@@ -9,30 +9,33 @@ from modules.networks.UnetViT import UViT
 from modules.networks.Unet import ContextUnet
 from modules.utils.schedulers import linear_beta_schedule
 
+from modules.trainers.base import BaseDiffusionModule
 
 
-class DDPM(pl.LightningModule):
-    def __init__(self,
-                n_T=1000,
-                n_feat=128
-                ):
-        super(DDPM, self).__init__()
-        self.nn_model = ContextUnet(in_channels=1, n_feat=n_feat)
+# helper functions
+def pad(var):
+    if var.shape == ():
+        return rearrange(var, ' -> 1 1 1 1')
+    else:
+        return rearrange(var, 'b -> b 1 1 1')
 
-        self.betas = linear_beta_schedule(n_T)
 
-        self.ddpm_schedules = self.register_ddpm_schedules(self.betas)
-
+class DDPM(BaseDiffusionModule):
+    def __init__(self, 
+                 number_of_timesteps=1000
+                 ):
+        super().__init__(number_of_timesteps)
+        
+        self.ddpm_schedules = self.register_ddpm_schedules()
         for k, v in self.ddpm_schedules.items():
             self.register_buffer(k, v)
 
-        self.n_T = n_T
-
-    def register_ddpm_schedules(self, beta_t):
+    def register_ddpm_schedules(self):
         """
         Returns pre-computed schedules for DDPM sampling, training process.
         """
-
+        
+        beta_t = linear_beta_schedule(self.n_T)
         sqrt_beta_t = torch.sqrt(beta_t)
         alpha_t = 1 - beta_t
         log_alpha_t = torch.log(alpha_t)
@@ -56,47 +59,32 @@ class DDPM(pl.LightningModule):
 
     def forward(self, x, t):
         return self.nn_model(x_t, t / self.n_T)
-
-    def sample_forward_diffusion(self, x, _ts, noise):
-        x_t = (
-            self.sqrtab[_ts, None, None, None] * x
-            + self.sqrtmab[_ts, None, None, None] * noise
-        )
-        return x_t
-
-    def sample_loop(self, batch):
-        x_i = torch.randn_like(batch).to(batch)  # x_T ~ N(0, 1), sample initial noise
-        for i in range(self.n_T-1, 0, -1):
-            t_is = torch.tensor([i / self.n_T]).to(batch)
-            t_is = t_is.repeat(batch.size(0),1,1,1)
-
-            z = torch.randn_like(batch).to(batch) if i > 1 else 0
-
-            eps = self.nn_model(x_i, t_is)
-            x_i = (
-                self.oneover_sqrta[i] * (x_i - eps * self.mab_over_sqrtmab[i])
-                + self.sqrt_beta_t[i] * z
-            )
-        return x_i
     
     def loss(self, x):
         noise = torch.randn_like(x)  # eps ~ N(0, 1)
         _ts = torch.randint(1, self.n_T, (x.shape[0],)).to(x).long()  # t ~ Uniform(0, n_T)
-        x_t = self.sample_forward_diffusion(x, _ts, noise)
+        x_t = self.forward_diffusion_process(x, _ts, noise)
         return F.mse_loss(noise, self.nn_model(x_t, _ts / self.n_T))
 
-    def training_step(self, batch, batch_idx):
-        images, _ = batch
-        loss = self.loss(images)
-        self.log('train_loss', loss)
-        return loss
+    def forward_diffusion_process(self, x, t, noise):
+        x_t = pad(self.sqrtab[t]) * x + pad(self.sqrtmab[t]) * noise
+        return x_t
+    
+    def reverse_diffusion_step(self, x_t, t, z, i):
+        eps = self.nn_model(x_t, t)
+        
+        x_t_minus_1 = (
+                self.oneover_sqrta[i] * (x_t - eps * self.mab_over_sqrtmab[i])
+                + self.sqrt_beta_t[i] * z
+            )
+        return x_t_minus_1
 
-    def validation_step(self, batch, batch_idx):
-        images, _ = batch
-        loss = self.loss(images)
-        self.log('val_loss', loss)
+    def reverse_diffusion_process(self, x_t):
+        for i in range(self.n_T-1, 0, -1):
+            t_is = torch.tensor([i / self.n_T]).to(x_t)
+            t_is = t_is.repeat(x_t.size(0),1,1,1)
+            z = torch.randn_like(x_t).to(x_t) if i > 1 else 0
 
-    def configure_optimizers(self):
-        lr = 1e-4
-        opt = torch.optim.Adam(self.nn_model.parameters(), lr=lr)
-        return opt
+            x_t = self.reverse_diffusion_step(x_t, t_is, z, i)
+            
+        return x_t

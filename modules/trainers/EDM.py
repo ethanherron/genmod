@@ -6,12 +6,10 @@ import lightning as pl
 from einops import rearrange
 from tqdm import tqdm
 
-from modules.networks.Unet import ContextUnet
+from modules.trainers.base import BaseDiffusionModule
 
 
 # helper functions
-
-# pad alpha, sigma terms from [b] -> [b 1 1 1]
 def pad(var):
     if var.shape == ():
         return rearrange(var, ' -> 1 1 1 1')
@@ -28,9 +26,9 @@ def unnormalize_to_zero_to_one(t):
     return (t + 1) * 0.5
 
 
-class EDM(pl.LightningModule):
+class EDM(BaseDiffusionModule):
     def __init__(self,
-                n_T=50,
+                number_of_timesteps=50,
                 n_feat=128,
                 sigma_min = 0.002,     # min noise level
                 sigma_max = 80,        # max noise level
@@ -43,12 +41,7 @@ class EDM(pl.LightningModule):
                 S_tmax = 50.,
                 S_noise = 1.003,
                 ):
-        super(EDM, self).__init__()
-        self.network = ContextUnet(in_channels=1, n_feat=n_feat)
-        self.n_T = n_T
-
-        # parameters
-
+        super(EDM, self).__init__(number_of_timesteps)
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         self.sigma_data = sigma_data
@@ -78,14 +71,14 @@ class EDM(pl.LightningModule):
     def forward(self, x_t, sigmas):
         conditioned_input = self.c_in(sigmas) * x_t
         conditioned_noise = self.c_noise(sigmas)
-        network_output = self.network(conditioned_input, conditioned_noise)
+        network_output = self.nn_model(conditioned_input, conditioned_noise)
         x_tm1 = self.c_skip(sigmas) * x_t + self.c_out(sigmas) * network_output
-        return x_tm1.clamp(-1., 1.)
+        return x_tm1.clamp(0., 1.)
     
     def noise_distribution(self, x_0):
         return (self.P_mean + self.P_std * torch.randn((x_0.shape[0],)).to(x_0)).exp()
     
-    def forward_diffusion(self, x_0, sigmas):
+    def forward_diffusion_process(self, x_0, sigmas):
         eps = torch.randn_like(x_0).to(x_0)
         x_t = x_0 + sigmas * eps
         return x_t
@@ -95,7 +88,7 @@ class EDM(pl.LightningModule):
     
     def loss(self, x_0): 
         sigmas = pad(self.noise_distribution(x_0))
-        x_t = self.forward_diffusion(x_0, sigmas)
+        x_t = self.forward_diffusion_process(x_0, sigmas)
                 
         x_0_hat = self.forward(x_t, sigmas)
         
@@ -128,9 +121,8 @@ class EDM(pl.LightningModule):
         
         for sigma_t, sigma_tm1, gamma in tqdm(sigmas_gammas, desc = 'sampling time step'):
             x_t = self.reverse_diffusion_step(x_t, sigma_t, sigma_tm1, gamma)
-        
-        x_0 = x_t  # for consistent variable names across repo, i.e., x_0 == sampled image
-        return unnormalize_to_zero_to_one(x_0.clamp_(-1., 1.))
+    
+        return x_t.clamp_(0.,1.)#unnormalize_to_zero_to_one(x_t.clamp_(-1., 1.))
     
     @torch.no_grad()
     def reverse_diffusion_step(self, x_t, sigma_t, sigma_tm1, gamma):
@@ -151,26 +143,6 @@ class EDM(pl.LightningModule):
             x_tm1 = x_t_hat + 0.5 * (sigma_tm1 - sigma_t_hat) * (denoised_over_sigma + denoised_prime_over_sigma)
             
         return x_tm1
-        
-    
-    def training_step(self, batch, batch_idx):
-        images, _ = batch
-        images = normalize_to_neg_one_to_one(images)
-        loss = self.loss(images)
-        self.log('train_loss', loss)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        images, _ = batch
-        images = normalize_to_neg_one_to_one(images)
-        loss = self.loss(images)
-        self.log('val_loss', loss)
-
-    def configure_optimizers(self):
-        lr = 1e-4
-        opt = torch.optim.Adam(self.network.parameters(), lr=lr)
-        return opt
-    
     
     
     
