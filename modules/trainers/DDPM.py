@@ -77,6 +77,7 @@ class DDPM(BaseDiffusionModule):
                 self.oneover_sqrta[i] * (x_t - eps * self.mab_over_sqrtmab[i])
                 + self.sqrt_beta_t[i] * z
             )
+        # x = x + d * dt
         return x_t_minus_1
 
     def reverse_diffusion_process(self, x_t):

@@ -141,6 +141,9 @@ class EDM(BaseDiffusionModule):
             output_tm1 = self.forward(x_tm1, sigma_tm1)
             denoised_prime_over_sigma = (x_tm1 - output_tm1) / sigma_tm1
             x_tm1 = x_t_hat + 0.5 * (sigma_tm1 - sigma_t_hat) * (denoised_over_sigma + denoised_prime_over_sigma)
+            # switch to the following notation - so much cleaner!!!
+            # x = x + d * dt
+            # d = denoised_prime_over_sigma
             
         return x_tm1
     
