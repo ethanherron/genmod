@@ -11,6 +11,7 @@ from modules.trainers.VDM import VDM
 from modules.trainers.EDM import EDM
 from modules.trainers.PFGMpp import PFGMpp
 from modules.trainers.genmod import genmod
+from modules.trainers.CM import CMIsolation
 
 
 
@@ -50,15 +51,16 @@ def main(args):
     # model = DDPM()
     # model = VDM()
     # model = EDM()
-    model = PFGMpp()
+    # model = PFGMpp()
     # model = genmod()
+    model = CMIsolation()
     
 
     # ------------------------
     #  INIT TRAINER
     # ------------------------
-    wandb_logger = WandbLogger(project='genmod', 
-                               log_model='all')
+    # wandb_logger = WandbLogger(project='genmod', 
+    #                            log_model='all')
 
     checkpoint = ModelCheckpoint(monitor='train_loss',
                                  mode='min', 
@@ -68,7 +70,7 @@ def main(args):
                          accelerator='gpu',
                          precision=16,
                          callbacks=[checkpoint],
-                         logger=wandb_logger, 
+                         # logger=wandb_logger, 
                          max_epochs=args.n_epochs, 
                          default_root_dir=save_dir, 
                          fast_dev_run=args.debug)
@@ -83,9 +85,9 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trajectory Prediction')
-    parser.add_argument('--save_dir', default='./results/training/VDM',
+    parser.add_argument('--save_dir', default='./results/training/CM',
                         type=str,help='path to directory for storing the checkpoints etc.')
-    parser.add_argument('-b','--batch_size', default=256, type=int,
+    parser.add_argument('-b','--batch_size', default=128, type=int,
                         help='Batch size')
     parser.add_argument('-ep','--n_epochs', default=20, type=int,
                         help='Number of epochs')

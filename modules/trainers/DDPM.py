@@ -7,7 +7,7 @@ from torchvision.utils import save_image, make_grid
 
 from modules.networks.UnetViT import UViT
 from modules.networks.Unet import ContextUnet
-from modules.utils.schedulers import linear_beta_schedule
+from modules.utils import linear_beta_schedule
 
 from modules.trainers.base import BaseDiffusionModule
 
@@ -77,7 +77,7 @@ class DDPM(BaseDiffusionModule):
                 self.oneover_sqrta[i] * (x_t - eps * self.mab_over_sqrtmab[i])
                 + self.sqrt_beta_t[i] * z
             )
-        # x = x + d * dt
+        # x_t_minus_1 = x_t + h * dx/dt
         return x_t_minus_1
 
     def reverse_diffusion_process(self, x_t):

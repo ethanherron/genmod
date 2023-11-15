@@ -7,7 +7,7 @@ from torchvision.utils import save_image, make_grid
 
 from modules.networks.UnetViT import UViT
 from modules.networks.Unet import ContextUnet, ContextUnet_genmod
-from modules.utils.schedulers import linear_beta_schedule
+from modules.utils import linear_beta_schedule
 
 
 

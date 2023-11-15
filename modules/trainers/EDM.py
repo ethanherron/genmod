@@ -56,24 +56,18 @@ class EDM(BaseDiffusionModule):
         self.S_tmax = S_tmax
         self.S_noise = S_noise
     
-    def c_in(self, sigmas):
-        return 1 * (sigmas ** 2 + self.sigma_data ** 2) ** -0.5
-    
-    def c_noise(self, sigmas):
-        return log(sigmas) * 0.25
-    
-    def c_skip(self, sigmas):
-        return (self.sigma_data ** 2) / (sigmas ** 2 + self.sigma_data ** 2)
-
-    def c_out(self, sigmas):
-        return sigmas * self.sigma_data * (self.sigma_data ** 2 + sigmas ** 2) ** -0.5
+    def preconditioners(self, sigmas):
+        c_in = 1 * (sigmas ** 2 + self.sigma_data ** 2) ** -0.5
+        c_noise = log(sigmas) * 0.25
+        c_skip = (self.sigma_data ** 2) / (sigmas ** 2 + self.sigma_data ** 2)
+        c_out = sigmas * self.sigma_data * (self.sigma_data ** 2 + sigmas ** 2) ** -0.5
+        return c_in, c_noise, c_skip, c_out
     
     def forward(self, x_t, sigmas):
-        conditioned_input = self.c_in(sigmas) * x_t
-        conditioned_noise = self.c_noise(sigmas)
-        network_output = self.nn_model(conditioned_input, conditioned_noise)
-        x_tm1 = self.c_skip(sigmas) * x_t + self.c_out(sigmas) * network_output
-        return x_tm1.clamp(0., 1.)
+        c_in, c_noise, c_skip, c_out = self.preconditioners(sigmas)
+        network_output = self.nn_model((c_in * x_t), c_noise)
+        x_tm1 = c_skip * x_t + c_out * network_output
+        return x_tm1.clamp(0.,1.)
     
     def noise_distribution(self, x_0):
         return (self.P_mean + self.P_std * torch.randn((x_0.shape[0],)).to(x_0)).exp()
