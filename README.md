@@ -6,3 +6,6 @@ Aiming for a toy repo for the diffusion model family.
 
 Rectified flow model .ipynb is from https://github.com/gnobitab/RectifiedFlow/tree/main example colab. 
 UNetModel is from https://github.com/openai/improved-diffusion/tree/main.
+
+
+It started out as what is described above, but quickly descended into a dumpster fire of random little ideas I wanted to try out. Enter at your own discretion.
