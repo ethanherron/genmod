@@ -8,4 +8,4 @@ Rectified flow model .ipynb is from https://github.com/gnobitab/RectifiedFlow/tr
 UNetModel is from https://github.com/openai/improved-diffusion/tree/main.
 
 
-It started out as what is described above, but quickly descended into a dumpster fire of random little ideas I wanted to try out. Enter at your own discretion.
+It started out as what is described above, but quickly descended into a dumpster fire of random little ideas I wanted to try out.
