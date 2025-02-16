@@ -6,14 +6,12 @@ from torch import Tensor
 from torchvision import transforms
 from torchvision.datasets import MNIST
 import wandb
-from dit import DiT
-from flux_vae import VariationalEncoder
+from networks.dit import DiT
 
 # Parse command line arguments
-parser = argparse.ArgumentParser(description="Variational Rectified Flow Training Script")
+parser = argparse.ArgumentParser(description="Rectified Flow Training Script")
 parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
 parser.add_argument('--num_workers', type=int, default=0, help='Number of dataloader workers')
-parser.add_argument('--beta', type=float, default=1.0, help='Beta value for KL divergence weighting')
 parser.add_argument('--num_steps', type=int, default=1000, help='Number of training steps')
 parser.add_argument('--lr', type=float, default=1e-3, help='Learning rate')
 args = parser.parse_args()
@@ -22,9 +20,9 @@ args = parser.parse_args()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Data preparation
-tf = transforms.Compose([transforms.ToTensor()])  # MNIST is already normalized [0, 1]
-train_dataset = MNIST("/home/idealaboptimus/data/edherron", train=True, download=True, transform=tf)
-val_dataset = MNIST("/home/idealaboptimus/data/edherron", train=False, download=True, transform=tf)
+tf = transforms.Compose([transforms.ToTensor()])
+train_dataset = MNIST("/home/idealaboptimus/data/edherron", train=True, download=False, transform=tf)
+val_dataset = MNIST("/home/idealaboptimus/data/edherron", train=False, download=False, transform=tf)
 
 train_loader = torch.utils.data.DataLoader(
     train_dataset,
@@ -44,10 +42,8 @@ val_loader = torch.utils.data.DataLoader(
 
 # Trainer class definition
 class Trainer:
-    def __init__(self, velocity_model, encoder, beta_value, optimizer, device, dataloader):
+    def __init__(self, velocity_model, optimizer, device, dataloader):
         self.velocity_model = velocity_model
-        self.encoder = encoder
-        self.beta = beta_value
         self.optimizer = optimizer
         self.device = device
         self.dataloader = dataloader
@@ -58,17 +54,12 @@ class Trainer:
         x0 = torch.randn_like(x1)
         xt = torch.lerp(x0, x1, t[:, None, None, None])
         target = x1 - x0
-        z = self.encoder(x0, x1, xt, t)
-        velocity = self.velocity_model(torch.cat([xt, z], dim=1), t)
-        velocity_field_loss = F.mse_loss(velocity, target)
-        kl_loss = self.encoder.reg.kl
-        loss = velocity_field_loss + (kl_loss * self.beta)
-        # Return all losses for logging
-        return loss, velocity_field_loss, kl_loss
+        velocity = self.velocity_model(xt, t)
+        loss = F.mse_loss(velocity, target)
+        return loss
     
     def train(self, num_steps):
         self.velocity_model.train()
-        self.encoder.train()
         loader = iter(self.dataloader)
         for step in range(num_steps):
             try:
@@ -77,14 +68,12 @@ class Trainer:
                 loader = iter(self.dataloader)
                 x1, _ = next(loader)
             # Unpack tuple from train_step
-            loss, velocity_field_loss, kl_loss = self.train_step(x1)
+            loss = self.train_step(x1)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
             # Log metrics to wandb
             wandb.log({
-                "velocity_field_loss": velocity_field_loss.item(),
-                "kl_loss": kl_loss.item(),
                 "total_loss": loss.item(),
                 "step": step,
             })
@@ -95,7 +84,7 @@ class Trainer:
 velocity_model = DiT(
     input_size=(28, 28),
     patch_size=4,
-    in_channels=2,
+    in_channels=1,
     out_channels=1,
     hidden_size=384,
     depth=6,
@@ -103,28 +92,17 @@ velocity_model = DiT(
     mlp_ratio=4.0,
 ).to(device)
 
-variational_encoder = VariationalEncoder(
-    resolution=28,
-    in_channels=3,
-    ch=64,
-    ch_mult=[1],
-    num_res_blocks=2,
-    z_channels=2,
-).to(device)
-
 # Create an optimizer for both the velocity model and the encoder
 optimizer = optim.Adam(
-    list(velocity_model.parameters()) + list(variational_encoder.parameters()),
+    list(velocity_model.parameters()),
     lr=args.lr,
 )
 
 if __name__ == "__main__":
     # Initialize wandb with the specified project, entity, and run name
-    wandb.init(project="mnist", entity="genmod", name="VRF")
+    wandb.init(project="mnist", entity="genmod", name="RF")
     trainer = Trainer(
         velocity_model=velocity_model,
-        encoder=variational_encoder,
-        beta_value=args.beta,
         optimizer=optimizer,
         device=device,
         dataloader=train_loader,
