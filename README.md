@@ -27,17 +27,17 @@ This repository serves as an educational resource, providing implementations of 
 - **Trainer**: `trainers/vrf.py`
 - **Citation**: Guo, Z., Liu, X., & Liu, Q. (2025). Variational Rectified Flow. arXiv preprint arXiv:2502.09616. [arXiv](https://arxiv.org/pdf/2502.09616)
 
-### 5. Probability Flow Generative Model++ (PFGM++)
+### 5. PFGM++ (PFGMpp)
 - **Trainer**: `trainers/pfgmpp.py`
-- **Citation**: Xu, Y., Song, J., Ermon, S., & Zhu, J. (2022). Improved Training of Score-Based Diffusion Models with Probability Flow ODE. arXiv preprint arXiv:2206.06910. [arXiv](https://arxiv.org/abs/2206.06910)
+- **Citation**: Xu, Y., Liu, Z., Tian, Y., Tong, S., Tegmark, M., Jaakola, T. (2023). PFGM++: Unlocking the Potential of Physics-Inspired Generative Models. arXiv preprint arXiv:2206.06910. [arXiv](https://arxiv.org/abs/2302.04265)
 
 ### 6. Consistency Models (CM)
 - **Trainer**: `trainers/cm.py`
-- **Citation**: Song, Y., Sohl-Dickstein, J., Kingma, D. P., Kumar, A., Ermon, S., & Poole, B. (2023). Score-Based Generative Modeling through Stochastic Differential Equations. arXiv preprint arXiv:2011.13456. [arXiv](https://arxiv.org/abs/2011.13456)
+- **Citation**: Song, Y., Dhariwal, P., Chen, M., & Sutskever, I. (2023). Consistency Models. arXiv preprint arXiv:2303.01469. [arXiv](https://arxiv.org/abs/2303.01469)
 
 ### 7. Cold Diffusion (CD)
 - **Trainer**: `trainers/cd.py`
-- **Citation**: Bansal, A., Chen, E., & Liu, B. (2022). Cold Diffusion: Inverting Arbitrary Image Transforms Without Noise. arXiv preprint arXiv:2208.09392. [arXiv](https://arxiv.org/abs/2208.09392)
+- **Citation**: Bansal, A., Borgnia, E., Chu, H.M., Li, J.S., Kazemi, H., Huang, F., Goldblum, M., Geiping, J., & Goldstein, T. (2022). Cold Diffusion: Inverting Arbitrary Image Transforms Without Noise. arXiv preprint arXiv:2208.09392. [arXiv](https://arxiv.org/abs/2208.09392)
 
 ### 8. Variational Diffusion Models (VDM)
 - **Trainer**: `trainers/vdm.py`
@@ -63,3 +63,6 @@ Replace `<model_name>` with one of the implemented algorithms (e.g., `ddpm`, `ed
 ## Notes
 
 This repository was built for personal use and for teaching a section on generative modeling. A few bugs crept in while refactoring so if you happen to find any, or see any errors, please let me know!
+
+---
+*This README was generated with assistance from Claude-3.5-Sonnet*
