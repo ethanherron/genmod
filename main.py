@@ -43,7 +43,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Data preparation
 tf = transforms.Compose([transforms.ToTensor()])
-train_dataset = MNIST("/home/idealaboptimus/data/edherron", train=True, download=False, transform=tf)
+train_dataset = MNIST("./mnist", train=True, download=False, transform=tf)
 train_loader = torch.utils.data.DataLoader(
     train_dataset,
     batch_size=args.batch_size,
@@ -186,8 +186,7 @@ if __name__ == "__main__":
     
     # Initialize wandb
     wandb.init(
-        project="mnist",
-        entity="genmod",
+        project="genmod_mnist",
         name=args.model.upper(),
         config=vars(args)
     )
