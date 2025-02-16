@@ -1,51 +1,82 @@
-from .base import FlowTrainer
+from .base import BaseTrainer
 import torch
+from torch import Tensor
 import torch.nn.functional as F
+from tqdm import tqdm
 
-class VRFTrainer(FlowTrainer):
+class VRFTrainer(BaseTrainer):
     """Variational Rectified Flow trainer.
     
-    Extends Rectified Flow with a learned latent space through a 
-    variational encoder, allowing for more expressive transformations
-    while maintaining invertibility.
+    Implementation of "Variational Rectified Flow" (Guo et al., 2025)
+    https://arxiv.org/pdf/2502.09616
+    
+    Extends Rectified Flow with a learned ~conditional-ish term, which assists model
+    in learning a multi-modal velocity field.
     """
-    def __init__(self, velocity_model, encoder, beta_value, *args, **kwargs):
+    def __init__(self, model, encoder, beta_value, *args, **kwargs):
         """Initialize VRF trainer.
         
         Args:
-            velocity_model: Model predicting velocity field
+            model: Model predicting velocity field
             encoder: Variational encoder model
             beta_value: Weight for KL divergence term
             *args, **kwargs: Additional arguments for FlowTrainer
         """
-        super().__init__(velocity_model, *args, **kwargs)
+        super().__init__(model, *args, **kwargs)
         self.encoder = encoder  # Variational encoder
         self.beta = beta_value  # KL weight
     
-    def compute_loss(self, x0, x1, xt, t, target):
-        """Compute combined velocity matching and KL loss.
+    def noise(self, x: Tensor) -> Tensor:
+        """Noise function for Rectified Flow.
         
         Args:
-            x0: Initial noise samples
-            x1: Target data samples
-            xt: Interpolated points at time t
-            t: Timesteps in [0,1]
-            target: Target velocities (x1 - x0)
+            x: Input data samples
             
         Returns:
-            loss: Combined velocity matching and KL loss
+            xt: Noisy images
+            t: Timesteps in [0,1]
+            target: Target velocities (x1 - x0)
         """
-        # Encode trajectory information into latent space
+        x1 = x.to(self.device)
+        x0 = torch.randn_like(x1)
+        t = torch.randn((x.shape[0],), device=self.device).sigmoid()
+        xt = torch.lerp(x0, x1, t[:, None, None, None])
+        target = x1 - x0
         z = self.encoder(x0, x1, xt, t)
+        return xt, t, target, z
+    
+    def compute_loss(self, x: Tensor) -> Tensor:
+        """Compute velocity matching loss.
         
-        # Predict velocity using both position and latent
+        Args:
+            x: Target data samples
+            
+        Returns:
+            loss: MSE between predicted and target velocities
+        """
+        xt, t, target, z = self.noise(x)
         velocity = self.model(torch.cat([xt, z], dim=1), t)
-        
-        # Velocity matching loss
         velocity_field_loss = F.mse_loss(velocity, target)
-        
-        # KL regularization from encoder
         kl_loss = self.encoder.reg.kl
-        
-        # Combined loss with beta weighting
         return velocity_field_loss + (kl_loss * self.beta)
+    
+    @torch.no_grad()
+    def _sample_impl(self, batch_size: int = 16) -> Tensor:
+        """Sampling process for Variational Rectified Flow.
+        Use Euler method to integrate the flow field from x0 ~ N(0, I) to x1 ~ p_data.
+        
+        Args:
+            batch_size: Number of images to sample
+            
+        Returns:
+            samples: Generated images
+        """
+        dt = 1 / self.nfe
+        x = torch.randn((batch_size, 1, 28, 28), device=self.device)
+        x = x.detach().clone()
+        z = torch.randn((batch_size, 1, 28, 28), device=self.device).detach()
+        for _ in tqdm(range(self.nfe), desc='sampling', total=self.nfe):
+            t = torch.ones((batch_size,), device=self.device) * (1 / self.nfe)
+            velocity = self.model(torch.cat([x, z], dim=1), t)
+            x = x.detach().clone() + velocity * dt
+        return x.detach().cpu().clip(0., 1.)

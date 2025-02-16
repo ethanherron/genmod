@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from torch import Tensor
 import wandb
 from tqdm import tqdm
+from torchvision.utils import save_image
+import os
 
 class BaseTrainer:
     """Base trainer for all generative models.
@@ -11,14 +13,35 @@ class BaseTrainer:
     This class provides the basic training loop and utilities common to all models.
     Specific model implementations should inherit from this or its subclasses.
     """
-    def __init__(self, model, optimizer, device, dataloader):
+    def __init__(self, model, optimizer, device, dataloader, nfe: int = 50, 
+                 save_dir: str = None, image_format: str = 'png'):
         self.model = model
         self.optimizer = optimizer
         self.device = device
         self.dataloader = dataloader
-    
+        self.nfe = nfe
+        self.save_dir = save_dir
+        self.image_format = image_format
+        
+        if save_dir is not None:
+            os.makedirs(save_dir, exist_ok=True)
+        
     @abstractmethod
-    def train_step(self, x: Tensor) -> Tensor:
+    def noise(self, x: Tensor) -> Tensor:
+        """Method to find noisy sample xt from x0 and t.
+        In diffusion models, this is the forward process.
+        In flow models, this is the interpolation process.
+        
+        Args:
+            x: Input batch of images
+            
+        Returns:
+            xt: Noisy images
+        """
+        raise NotImplementedError
+        
+    @abstractmethod
+    def compute_loss(self, x: Tensor) -> Tensor:
         """Single training step - implement in subclass.
         
         Args:
@@ -48,7 +71,7 @@ class BaseTrainer:
                 x, _ = next(loader)
             
             # Training step    
-            loss = self.train_step(x)
+            loss = self.compute_loss(x)
             
             # Optimization step
             self.optimizer.zero_grad()
@@ -61,66 +84,30 @@ class BaseTrainer:
                 "step": step,
             })
             pbar.set_postfix({"loss": f"{loss.item():.4f}"})
-
-class DiffusionTrainer(BaseTrainer):
-    """Base class for diffusion-based models (DDPM, EDM, VDM).
-    
-    Implements common functionality for models that use a noise-based
-    forward process and gradual denoising.
-    """
-    def __init__(self, model, optimizer, device, dataloader, num_timesteps):
-        super().__init__(model, optimizer, device, dataloader)
-        self.n_T = num_timesteps
-    
-    @abstractmethod
-    def forward_diffusion(self, x_0: Tensor, t: Tensor) -> tuple[Tensor, Tensor]:
-        """Forward diffusion process - implement in subclass.
-        
-        Args:
-            x_0: Clean images
-            t: Timesteps
             
-        Returns:
-            x_t: Noisy images
-            noise: Added noise (for training)
-        """
-        raise NotImplementedError
-    
-    @abstractmethod
-    def sample(self, batch_size: int = 16) -> Tensor:
+    def sample(self, batch_size: int = 16, save: bool = True) -> Tensor:
         """Sampling process - implement in subclass.
         
         Args:
             batch_size: Number of images to sample
+            save: Whether to save samples to disk
             
         Returns:
             samples: Generated images
         """
-        raise NotImplementedError
-
-class FlowTrainer(BaseTrainer):
-    """Base class for flow-based models (RF, VRF).
-    
-    Implements common functionality for models that learn
-    a velocity field between distributions.
-    """
-    def train_step(self, x1: Tensor) -> Tensor:
-        """Common training step for flow models.
+        samples = self._sample_impl(batch_size)
         
-        Args:
-            x1: Target images
+        if save and self.save_dir is not None:
+            method_name = self.__class__.__name__.lower().replace("trainer", "")
+            filename = f"{method_name}_generated_samples.{self.image_format}"
+            save_path = os.path.join(self.save_dir, filename)
+            save_image(samples, save_path, normalize=True)
             
-        Returns:
-            loss: Training loss
-        """
-        x1 = x1.to(self.device)
-        t = torch.randn(x1.shape[0], device=self.device).sigmoid()
-        x0 = torch.randn_like(x1)
-        xt = torch.lerp(x0, x1, t[:, None, None, None])
-        target = x1 - x0
-        return self.compute_loss(x0, x1, xt, t, target)
+        return samples
     
     @abstractmethod
-    def compute_loss(self, x0, x1, xt, t, target):
-        """Compute loss - implement in subclass"""
+    def _sample_impl(self, batch_size: int) -> Tensor:
+        """Implementation-specific sampling logic"""
         raise NotImplementedError
+    
+    

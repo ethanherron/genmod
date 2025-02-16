@@ -1,10 +1,10 @@
-from .base import DiffusionTrainer
+from .base import BaseTrainer
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from math import sqrt
 
-class EDMTrainer(DiffusionTrainer):
+class EDMTrainer(BaseTrainer):
     """Elucidated Diffusion Model trainer.
     
     Implementation of "Elucidated Diffusion" (Karras et al., 2022)
@@ -50,7 +50,7 @@ class EDMTrainer(DiffusionTrainer):
         c_noise = sigma.log() * 0.25
         return c_skip, c_out, c_in, c_noise
     
-    def forward_diffusion(self, x_0, sigma):
+    def noise(self, x_0, sigma):
         """Forward diffusion process using continuous sigma parameterization.
         
         Args:
@@ -89,13 +89,13 @@ class EDMTrainer(DiffusionTrainer):
         """
         return (sigma ** 2 + self.sigma_data ** 2) / (sigma * self.sigma_data) ** 2
     
-    def train_step(self, x):
+    def compute_loss(self, x):
         """Training step using EDM formulation"""
         x = x.to(self.device)
         sigma = self.sample_noise_levels(x.shape[0])
         
         # Forward diffusion
-        x_t, noise = self.forward_diffusion(x, sigma)
+        x_t, noise = self.noise(x, sigma)
         
         # Get scalings
         c_skip, c_out, c_in, c_noise = self.get_scalings(sigma)
@@ -119,77 +119,67 @@ class EDMTrainer(DiffusionTrainer):
     
     def sample_schedule(self):
         """Generate sampling schedule following Karras et al."""
-        steps = torch.arange(self.n_T, device=self.device)
+        steps = torch.arange(self.nfe, device=self.device)
         sigmas = (
             self.sigma_max ** (1/self.rho) + 
-            steps / (self.n_T-1) * 
+            steps / (self.nfe-1) * 
             (self.sigma_min ** (1/self.rho) - self.sigma_max ** (1/self.rho))
         ) ** self.rho
         sigmas = F.pad(sigmas, (0, 1), value=0.)
         return sigmas
     
-    def sample(self, batch_size=16):
-        """Sample new images using EDM sampling with second-order solver"""
-        self.model.eval()
-        with torch.no_grad():
-            # Get noise schedule
-            sigmas = self.sample_schedule()
+    @torch.no_grad()
+    def _sample_impl(self, batch_size=16):
+        """Sample new images using EDM sampling"""
+        sigmas = self.sample_schedule()
+        gammas = torch.where(
+            (sigmas >= self.S_tmin) & (sigmas <= self.S_tmax),
+            min(self.S_churn / self.nfe, sqrt(2) - 1),
+            0.
+        )
+        x = torch.randn(batch_size, 1, 28, 28).to(self.device) * sigmas[0]
+        
+        for sigma, sigma_next, gamma in tqdm(zip(sigmas[:-1], sigmas[1:], gammas[:-1]), 
+                                           desc='sampling', total=len(sigmas)-1):
+            eps = self.S_noise * torch.randn_like(x) if gamma > 0 else 0
+            sigma_hat = sigma + gamma * sigma
+            x_hat = x + sqrt(sigma_hat**2 - sigma**2) * eps
             
-            # Calculate gamma for stochastic sampling
-            gammas = torch.where(
-                (sigmas >= self.S_tmin) & (sigmas <= self.S_tmax),
-                min(self.S_churn / self.n_T, sqrt(2) - 1),
-                0.
+            # Get model scalings
+            c_skip, c_out, c_in, c_noise = self.get_scalings(
+                torch.full((batch_size,), sigma_hat, device=self.device)
             )
             
-            # Initial noise
-            x = torch.randn(batch_size, 1, 28, 28).to(self.device) * sigmas[0]
+            # Model prediction
+            model_output = self.model(
+                x_hat * c_in[:, None, None, None],
+                c_noise
+            )
+            denoised = model_output * c_out[:, None, None, None]
+            denoised = denoised + x_hat * c_skip[:, None, None, None]
             
-            # Sampling loop with second-order correction
-            for i, (sigma, sigma_next, gamma) in enumerate(tqdm(
-                zip(sigmas[:-1], sigmas[1:], gammas[:-1]),
-                desc='sampling'
-            )):
-                # Add noise if using stochastic sampling
-                eps = self.S_noise * torch.randn_like(x) if gamma > 0 else 0
-                sigma_hat = sigma + gamma * sigma
-                x_hat = x + sqrt(sigma_hat**2 - sigma**2) * eps
-                
-                # Get model scalings
+            # Update x
+            d = (x_hat - denoised) / sigma_hat
+            dt = sigma_next - sigma_hat
+            x = x_hat + d * dt
+            
+            # Second order correction
+            if sigma_next > 0:
+                # Get scalings for correction step
                 c_skip, c_out, c_in, c_noise = self.get_scalings(
-                    torch.full((batch_size,), sigma_hat, device=self.device)
+                    torch.full((batch_size,), sigma_next, device=self.device)
                 )
                 
-                # Model prediction
+                # Model prediction at next step
                 model_output = self.model(
-                    x_hat * c_in[:, None, None, None],
+                    x * c_in[:, None, None, None],
                     c_noise
                 )
-                denoised = model_output * c_out[:, None, None, None]
-                denoised = denoised + x_hat * c_skip[:, None, None, None]
+                denoised_next = model_output * c_out[:, None, None, None]
+                denoised_next = denoised_next + x * c_skip[:, None, None, None]
                 
-                # Update x
-                d = (x_hat - denoised) / sigma_hat
-                dt = sigma_next - sigma_hat
-                x = x_hat + d * dt
-                
-                # Second order correction
-                if sigma_next > 0:
-                    # Get scalings for correction step
-                    c_skip, c_out, c_in, c_noise = self.get_scalings(
-                        torch.full((batch_size,), sigma_next, device=self.device)
-                    )
-                    
-                    # Model prediction at next step
-                    model_output = self.model(
-                        x * c_in[:, None, None, None],
-                        c_noise
-                    )
-                    denoised_next = model_output * c_out[:, None, None, None]
-                    denoised_next = denoised_next + x * c_skip[:, None, None, None]
-                    
-                    # Apply correction
-                    d_next = (x - denoised_next) / sigma_next
-                    x = x_hat + 0.5 * dt * (d + d_next)
-            
-            return x.clamp(0., 1.)
+                # Apply correction
+                d_next = (x - denoised_next) / sigma_next
+                x = x_hat + 0.5 * dt * (d + d_next)
+        
+        return x.detach().cpu().clamp(0., 1.)

@@ -1,9 +1,9 @@
-from .base import DiffusionTrainer
+from .base import BaseTrainer
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 
-class CDTrainer(DiffusionTrainer):
+class CDTrainer(BaseTrainer):
     """Cold Diffusion trainer.
     
     Implementation of "Cold Diffusion: Inverting Arbitrary Image Transforms Without Noise"
@@ -27,7 +27,7 @@ class CDTrainer(DiffusionTrainer):
         one for each timestep in the diffusion process.
         """
         kernels = []
-        for t in range(self.n_T):
+        for t in range(self.nfe):
             # Create Gaussian kernel with increasing std over time
             std = self.kernel_std * (t + 1)
             kernel = self._get_gaussian_kernel2d(
@@ -40,6 +40,10 @@ class CDTrainer(DiffusionTrainer):
             
         # Stack all kernels
         self.register_buffer('kernels', torch.stack(kernels))
+        
+    def register_buffer(self, name, tensor):
+        """Helper to register buffer on device"""
+        setattr(self, name, tensor)
     
     def _get_gaussian_kernel2d(self, kernel_size, sigma):
         """Create 2D Gaussian kernel.
@@ -89,7 +93,7 @@ class CDTrainer(DiffusionTrainer):
             blurred.append(F.conv2d(channel, kernel, padding=0))
         return torch.cat(blurred, dim=1)
     
-    def forward_diffusion(self, x_0, t):
+    def noise(self, x_0, t):
         """Forward process: apply increasing blur.
         
         Args:
@@ -107,53 +111,52 @@ class CDTrainer(DiffusionTrainer):
             x_t[mask] = self.apply_blur(x_t[mask], i)
         return x_t
     
-    def train_step(self, x):
+    def compute_loss(self, x):
         """Training step predicting clean images from blurred ones"""
         x = x.to(self.device)
         # Sample random timesteps
-        t = torch.randint(0, self.n_T, (x.shape[0],), device=self.device)
+        t = torch.randint(0, self.nfe, (x.shape[0],), device=self.device)
         
         # Apply forward process (blur)
-        x_t = self.forward_diffusion(x, t)
+        x_t = self.noise(x, t)
         
         # Model predicts clean image
-        pred = self.model(x_t, t / self.n_T)
+        pred = self.model(x_t, t / self.nfe)
         
         # Loss is MSE between prediction and original
         return F.mse_loss(pred, x)
     
-    def sample(self, batch_size=16):
+    @torch.no_grad()
+    def _sample_impl(self, batch_size=16):
         """Sample new images using Cold Diffusion.
         
         Implements Algorithm 2 from the paper, using the difference
         between consecutive blur levels to guide the reverse process.
         """
-        self.model.eval()
-        with torch.no_grad():
-            # Start from random noise
-            x = torch.randn(batch_size, 1, 28, 28).to(self.device)
+        # Start from random noise
+        x = torch.randn(batch_size, 1, 28, 28).to(self.device)
+        
+        # Apply maximum blur
+        x = self.noise(
+            x, 
+            torch.full((batch_size,), self.nfe-1, device=self.device)
+        )
+        
+        # Reverse process
+        for t in tqdm(reversed(range(self.nfe)), desc='sampling', total=self.nfe):
+            t_batch = torch.full((batch_size,), t, device=self.device)
             
-            # Apply maximum blur
-            x = self.forward_diffusion(
-                x, 
-                torch.full((batch_size,), self.n_T-1, device=self.device)
-            )
+            # Get model prediction of clean image
+            x_0_hat = self.model(x, t_batch / self.nfe)
             
-            # Reverse process
-            for t in tqdm(reversed(range(self.n_T)), desc='sampling'):
-                t_batch = torch.full((batch_size,), t, device=self.device)
+            if t > 0:
+                # Get blurred versions of prediction
+                x_t = self.noise(x_0_hat, t_batch)
+                x_t_minus_1 = self.noise(x_0_hat, t_batch - 1)
                 
-                # Get model prediction of clean image
-                x_0_hat = self.model(x, t_batch / self.n_T)
-                
-                if t > 0:
-                    # Get blurred versions of prediction
-                    x_t = self.forward_diffusion(x_0_hat, t_batch)
-                    x_t_minus_1 = self.forward_diffusion(x_0_hat, t_batch - 1)
-                    
-                    # Update using difference between blur levels
-                    x = x - x_t + x_t_minus_1
-                else:
-                    x = x_0_hat
-            
-            return x.clamp(0., 1.) 
+                # Update using difference between blur levels
+                x = x - x_t + x_t_minus_1
+            else:
+                x = x_0_hat
+        
+        return x.detach().cpu().clamp(0., 1.) 

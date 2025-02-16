@@ -5,7 +5,7 @@ import torch
 import torch.nn.functional as F
 from einops import rearrange
 from torch import Tensor, nn
-from dit import TimestepEmbedder  # <-- NEW: Import time embedder from dit.py
+from networks.dit import TimestepEmbedder  # <-- NEW: Import time embedder from dit.py
 
 
 def swish(x: Tensor) -> Tensor:

@@ -1,10 +1,10 @@
-from .base import DiffusionTrainer
+from .base import BaseTrainer
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from math import sqrt
 
-class CMTrainer(DiffusionTrainer):
+class CMTrainer(BaseTrainer):
     """Consistency Model trainer.
     
     Implementation of "Consistency Models" (Song et al., 2023)
@@ -35,7 +35,7 @@ class CMTrainer(DiffusionTrainer):
         Returns:
             sigma: Noise levels at timesteps t
         """
-        return self.sigma_max * (self.sigma_min/self.sigma_max) ** (t/self.n_T)
+        return self.sigma_max * (self.sigma_min/self.sigma_max) ** (t/self.nfe)
     
     def sample_time_pairs(self, batch_size):
         """Sample pairs of timesteps for consistency distillation.
@@ -61,12 +61,12 @@ class CMTrainer(DiffusionTrainer):
         t_init = t_final * mult
         
         # Convert to sigma values
-        sigma_final = self.karras_schedule(t_final * self.n_T)
-        sigma_init = self.karras_schedule(t_init * self.n_T)
+        sigma_final = self.karras_schedule(t_final * self.nfe)
+        sigma_init = self.karras_schedule(t_init * self.nfe)
         
         return sigma_init, sigma_final
     
-    def forward_diffusion(self, x_0, sigma):
+    def noise(self, x_0, sigma):
         """Forward diffusion process using EDM formulation.
         
         Args:
@@ -99,7 +99,7 @@ class CMTrainer(DiffusionTrainer):
         c_noise = sigma.log() * 0.25
         return c_skip, c_out, c_in, c_noise
     
-    def train_step(self, x):
+    def compute_loss(self, x):
         """Training step using consistency distillation"""
         x = x.to(self.device)
         
@@ -107,8 +107,8 @@ class CMTrainer(DiffusionTrainer):
         sigma_init, sigma_final = self.sample_time_pairs(x.shape[0])
         
         # Add noise for both timesteps
-        x_init, _ = self.forward_diffusion(x, sigma_init)
-        x_final, _ = self.forward_diffusion(x, sigma_final)
+        x_init, _ = self.noise(x, sigma_init)
+        x_final, _ = self.noise(x, sigma_final)
         
         # Get scalings for both timesteps
         c_skip_i, c_out_i, c_in_i, c_noise_i = self.get_scalings(sigma_init)
@@ -137,71 +137,25 @@ class CMTrainer(DiffusionTrainer):
         
         return loss
     
-    def sample(self, batch_size=16):
+    @torch.no_grad()
+    def _sample_impl(self, batch_size=16):
         """One-step sampling for Consistency Models.
         
         The key advantage of Consistency Models is their ability
         to generate samples in a single step.
         """
-        self.model.eval()
-        with torch.no_grad():
-            # Start from noise
-            x = torch.randn(batch_size, 1, 28, 28).to(self.device)
-            sigma = torch.full((batch_size,), self.sigma_max, device=self.device)
-            
-            # Get scalings
-            c_skip, c_out, c_in, c_noise = self.get_scalings(sigma)
-            
-            # Single-step prediction
-            pred = self.model(
-                x * c_in[:, None, None, None],
-                c_noise
-            )
-            x = pred * c_out[:, None, None, None] + x * c_skip[:, None, None, None]
-            
-            return x.clamp(0., 1.)
-    
-    def sample_with_steps(self, batch_size=16, num_steps=None):
-        """Multi-step sampling for better quality.
+        # Start from noise
+        x = torch.randn(batch_size, 1, 28, 28).to(self.device)
+        sigma = torch.full((batch_size,), self.sigma_max, device=self.device)
         
-        While Consistency Models can sample in one step, using multiple
-        steps often gives better quality at the cost of speed.
+        # Get scalings
+        c_skip, c_out, c_in, c_noise = self.get_scalings(sigma)
         
-        Args:
-            batch_size: Number of images to sample
-            num_steps: Number of sampling steps (defaults to n_T)
-        """
-        if num_steps is None:
-            num_steps = self.n_T
-            
-        self.model.eval()
-        with torch.no_grad():
-            # Start from noise
-            x = torch.randn(batch_size, 1, 28, 28).to(self.device)
-            
-            # Generate sigma schedule
-            sigmas = torch.tensor([
-                self.karras_schedule(t/num_steps)
-                for t in range(num_steps+1)
-            ], device=self.device)
-            
-            # Sampling loop
-            for i in tqdm(range(num_steps), desc='sampling'):
-                sigma = sigmas[i].repeat(batch_size)
-                
-                # Get scalings
-                c_skip, c_out, c_in, c_noise = self.get_scalings(sigma)
-                
-                # Model prediction
-                pred = self.model(
-                    x * c_in[:, None, None, None],
-                    c_noise
-                )
-                x_pred = pred * c_out[:, None, None, None] + \
-                        x * c_skip[:, None, None, None]
-                
-                # Update using solver
-                dt = sigmas[i+1] - sigmas[i]
-                x = x + (x_pred - x) * (dt/sigmas[i])
-            
-            return x.clamp(0., 1.) 
+        # Single-step prediction
+        pred = self.model(
+            x * c_in[:, None, None, None],
+            c_noise
+        )
+        x = pred * c_out[:, None, None, None] + x * c_skip[:, None, None, None]
+        
+        return x.detach().cpu().clamp(0., 1.)
