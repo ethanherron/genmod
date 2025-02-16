@@ -55,8 +55,8 @@ Replace `<model_name>` with one of the implemented algorithms (e.g., `ddpm`, `ed
 
 ## Code References
 
-- Variational Encoder is copy-pasted-edited from [black-forest-labs/flux](https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/autoencoder.py)
-- DiT is copy-pasted-edited from [facebookresearch/DiT](https://github.com/facebookresearch/DiT/blob/main/models.py)
+- Variational Encoder is based on [black-forest-labs/flux](https://github.com/black-forest-labs/flux/blob/main/src/flux/modules/autoencoder.py)
+- DiT is from [facebookresearch/DiT](https://github.com/facebookresearch/DiT/blob/main/models.py)
 - EDM is based on [lucidrains/denoising-diffusion-pytorch](https://github.com/lucidrains/denoising-diffusion-pytorch/blob/main/denoising_diffusion_pytorch/denoising_diffusion.py)
 
 
