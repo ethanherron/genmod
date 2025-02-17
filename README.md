@@ -25,11 +25,11 @@ This repository serves as an educational resource, providing implementations of 
 
 ### 4. Variational Rectified Flow (VRF)
 - **Trainer**: `trainers/vrf.py`
-- **Citation**: Guo, Z., Liu, X., & Liu, Q. (2025). Variational Rectified Flow. arXiv preprint arXiv:2502.09616. [arXiv](https://arxiv.org/pdf/2502.09616)
+- **Citation**: Guo, P., & Schwing, A.G. (2025). Variational Rectified Flow. arXiv preprint arXiv:2502.09616. [arXiv](https://arxiv.org/pdf/2502.09616)
 
 ### 5. PFGM++ (PFGMpp)
 - **Trainer**: `trainers/pfgmpp.py`
-- **Citation**: Xu, Y., Liu, Z., Tian, Y., Tong, S., Tegmark, M., Jaakola, T. (2023). PFGM++: Unlocking the Potential of Physics-Inspired Generative Models. arXiv preprint arXiv:2206.06910. [arXiv](https://arxiv.org/abs/2302.04265)
+- **Citation**: Xu, Y., Liu, Z., Tian, Y., Tong, S., Tegmark, M., & Jaakola, T. (2023). PFGM++: Unlocking the Potential of Physics-Inspired Generative Models. arXiv preprint arXiv:2206.06910. [arXiv](https://arxiv.org/abs/2302.04265)
 
 ### 6. Consistency Models (CM)
 - **Trainer**: `trainers/cm.py`
